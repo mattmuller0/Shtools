@@ -1,0 +1,100 @@
+bpcn() {
+    DEFAULT_MEMORY=16GB
+    DEFAULT_CPUS=1
+
+    # Function to print usage
+    print_usage() {
+        echo "Usage: $0 [-m MEMORY] [-c CPUS]"
+        echo "  MEMORY: Amount of memory per cpu to request (default: $DEFAULT_MEMORY)"
+        echo "  CPUS: Number of CPUs to request (default: $DEFAULT_CPUS)"
+    }
+
+    # Function to get the status of the job
+    get_job_status() {
+        ssh hpc squeue --me | grep wrap | awk '{print $5}'
+    }
+
+    # Function to get the compute node
+    get_compute_node() {
+        ssh hpc squeue --me | grep wrap | awk '{print $8}'
+    }
+
+    # Initialize variables with default values
+    MEMORY=$DEFAULT_MEMORY
+    CPUS=$DEFAULT_CPUS
+
+    # Parse arguments
+    while getopts ":m:c:" opt; do
+        case $opt in
+            h)
+                print_usage
+                return 0
+                ;;
+            m)
+                MEMORY=$OPTARG
+                ;;
+            c)
+                CPUS=$OPTARG
+                ;;
+            \?)
+                echo "Invalid option: -$OPTARG" >&2
+                print_usage
+                return 1
+                ;;
+            :)
+                echo "Option -$OPTARG requires an argument." >&2
+                print_usage
+                return 1
+                ;;
+        esac
+    done
+
+    # Validate arguments
+    if ! [[ $MEMORY =~ ^[0-9]+[MG]B$ ]]; then
+        echo "Invalid memory per cpu format. Example: 32GB or 420MB"
+        print_usage
+        return 1
+    fi
+
+    if ! [[ $CPUS =~ ^[0-9]+$ ]]; then
+        echo "Invalid CPUs format. Must be an integer."
+        print_usage
+        return 1
+    fi
+
+    # Submit the job to the bigpurple server
+    cmd="sbatch --time=8:00:00 --nodes=1 --mem-per-cpu=$MEMORY --cpus-per-task=$CPUS --wrap 'sleep infinity'"
+    echo "Running request for $MEMORY and $CPUS CPUs"
+    ssh hpc $cmd
+
+    # Wait for the compute node to be ready
+    STATUS=$(get_job_status)
+    while [[ "$STATUS" != "R" ]]; do
+        echo "Waiting for compute node..."
+        sleep 10
+        STATUS=$(get_job_status)
+    done
+    COMPUTE_NODE=$(get_compute_node)
+    echo "Compute node: $COMPUTE_NODE"
+
+    # Ensure the compute node is not empty
+    if [ -z "$COMPUTE_NODE" ]; then
+        echo "No compute node available"
+        return 1
+    fi
+
+    # Now format the compute node to add in the configx file
+    #   Host cn
+    #     HostName XXX
+    #     User mm12865
+    #     ProxyJump 
+    #     StrictHostKeyChecking no
+    #     UserKnownHostsFile /dev/null
+    # Overwrite the cnx host with the correct hostname
+    echo "Host cn
+        HostName $COMPUTE_NODE
+        User mm12865
+        ProxyJump hpc
+        StrictHostKeyChecking no
+        UserKnownHostsFile /dev/null" > ~/.ssh/configx
+}
