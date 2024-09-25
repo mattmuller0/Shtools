@@ -14,39 +14,28 @@ bpupload() {
         echo "  -r    Remote project directory"
         echo "  -h    Show this help message"
     }
+    
 
     # Parse options
-    while getopts ":l:r:h" opt; {
-        case ${opt} in
-            l )
-                local_data_dir="$OPTARG"
-                ;;
-            r )
-                remote_project_dir="$OPTARG"
-                ;;
-            h )
-                usage
-                return 0
-                ;;
-            \? )
-                echo "Invalid option: -$OPTARG" >&2
-                usage
-                return 1
-                ;;
-            : )
-                echo "Option -$OPTARG requires an argument." >&2
-                usage
-                return 1
-                ;;
+    # Parse options
+    while getopts "l:r:h" opt; do
+        case $opt in
+            l) local_data_dir="$OPTARG" ;;
+            r) remote_project_dir="$OPTARG" ;;
+            h) usage
+               return 0 ;;
+            *) usage
+               return 1 ;;
         esac
-    }
+    done
 
     # Check if required arguments are provided
     if [ -z "$local_data_dir" ] || [ -z "$remote_project_dir" ]; then
         echo "Error: Both local data directory and remote project directory are required."
-        usage
+        show_help
         return 1
     fi
+
 
     # Validate local data directory
     if [ ! -d "$local_data_dir" ]; then
