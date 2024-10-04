@@ -49,7 +49,7 @@ bpcn() {
     fi
 
     # Submit to the bigpurple server
-    cmd="sbatch --parsable --time=8:00:00 --nodes=1 --mem-per-cpu=$MEMORY --cpus-per-task=$CPUS --output=logs/%x-%j.out --wrap='sleep infinity'"
+    cmd="sbatch --parsable --time=8:00:00 --nodes=1 --mem-per-cpu=$MEMORY --cpus-per-task=$CPUS --output=logs/server-%j.out --wrap='sleep infinity'"
     echo "Running request for $MEMORY and $CPUS CPUs"
     job_id=$(ssh hpc $cmd)
     echo "Job submitted with ID: $job_id"
