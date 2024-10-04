@@ -11,41 +11,27 @@ bpcn() {
 
     # Function to get the status of the job
     get_job_status() {
-        ssh hpc squeue --me | grep wrap | awk '{print $5}'
+        ssh hpc squeue --me | grep $job_id | awk '{print $5}'
     }
 
     # Function to get the compute node
     get_compute_node() {
-        ssh hpc squeue --me | grep wrap | awk '{print $8}'
+        ssh hpc squeue --me | grep $job_id | awk '{print $8}'
     }
 
     # Initialize variables with default values
     MEMORY=$DEFAULT_MEMORY
     CPUS=$DEFAULT_CPUS
 
-    # Parse arguments
-    while getopts ":m:c:" opt; do
+    # Parse options
+    while getopts "m:c:h" opt; do
         case $opt in
-            h)
-                print_usage
-                return 0
-                ;;
-            m)
-                MEMORY=$OPTARG
-                ;;
-            c)
-                CPUS=$OPTARG
-                ;;
-            \?)
-                echo "Invalid option: -$OPTARG" >&2
-                print_usage
-                return 1
-                ;;
-            :)
-                echo "Option -$OPTARG requires an argument." >&2
-                print_usage
-                return 1
-                ;;
+            m) MEMORY="$OPTARG" ;;
+            c) CPUS="$OPTARG" ;;
+            h) print_usage
+               return 0 ;;
+            *) print_usage
+               return 1 ;;
         esac
     done
 
@@ -62,10 +48,17 @@ bpcn() {
         return 1
     fi
 
-    # Submit the job to the bigpurple server
-    cmd="sbatch --time=8:00:00 --nodes=1 --mem-per-cpu=$MEMORY --cpus-per-task=$CPUS --wrap 'sleep infinity'"
+    # Submit to the bigpurple server
+    cmd="sbatch --parsable --time=8:00:00 --nodes=1 --mem-per-cpu=$MEMORY --cpus-per-task=$CPUS --output=logs/%x-%j.out --wrap='sleep infinity'"
     echo "Running request for $MEMORY and $CPUS CPUs"
-    ssh hpc $cmd
+    job_id=$(ssh hpc $cmd)
+    echo "Job submitted with ID: $job_id"
+
+    # Ensure the job was submitted successfully
+    if [ -z "$job_id" ]; then
+        echo "Failed to submit job"
+        return 1
+    fi
 
     # Wait for the compute node to be ready
     STATUS=$(get_job_status)
@@ -85,6 +78,7 @@ bpcn() {
 
     # Now format the compute node to add in the configx file
     #   Host cn
+    #     LogLevel QUIET
     #     HostName XXX
     #     User mm12865
     #     ProxyJump 
@@ -92,6 +86,7 @@ bpcn() {
     #     UserKnownHostsFile /dev/null
     # Overwrite the cnx host with the correct hostname
     echo "Host cn
+        LogLevel QUIET
         HostName $COMPUTE_NODE
         User mm12865
         ProxyJump hpc
