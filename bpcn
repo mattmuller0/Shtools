@@ -81,7 +81,7 @@ bpcn() {
     #     LogLevel QUIET
     #     HostName XXX
     #     User mm12865
-    #     ProxyJump 
+    #     ProxyJump hpc
     #     StrictHostKeyChecking no
     #     UserKnownHostsFile /dev/null
     # Overwrite the cnx host with the correct hostname
