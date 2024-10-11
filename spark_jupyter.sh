@@ -14,7 +14,7 @@ set -e
 module load Anaconda3
 #######################################
 
-source start_spark.sh
+source start_spark.sh # TODO
 
 export PYSPARK_PYTHON=$(which python)
 export PYSPARK_DRIVER_PYTHON=$(which jupyter)
