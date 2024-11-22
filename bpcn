@@ -1,22 +1,22 @@
 bpcn() {
-    DEFAULT_MEMORY=16GB
-    DEFAULT_CPUS=1
+    DEFAULT_MEMORY="16GB"
+    DEFAULT_CPUS=2
 
     # Function to print usage
     print_usage() {
         echo "Usage: $0 [-m MEMORY] [-c CPUS]"
-        echo "  MEMORY: Amount of memory per cpu to request (default: $DEFAULT_MEMORY)"
+        echo "  MEMORY: Amount of memory per CPU to request (default: $DEFAULT_MEMORY)"
         echo "  CPUS: Number of CPUs to request (default: $DEFAULT_CPUS)"
     }
 
     # Function to get the status of the job
     get_job_status() {
-        ssh hpc squeue --me | grep $job_id | awk '{print $5}'
+        ssh hpc squeue --me | awk -v job_id="$job_id" '$1 == job_id {print $5}'
     }
 
     # Function to get the compute node
     get_compute_node() {
-        ssh hpc squeue --me | grep $job_id | awk '{print $8}'
+        ssh hpc squeue --me | awk -v job_id="$job_id" '$1 == job_id {print $8}'
     }
 
     # Initialize variables with default values
@@ -37,7 +37,7 @@ bpcn() {
 
     # Validate arguments
     if ! [[ $MEMORY =~ ^[0-9]+[MG]B$ ]]; then
-        echo "Invalid memory per cpu format. Example: 32GB or 420MB"
+        echo "Invalid memory per CPU format. Example: 32GB or 420MB"
         print_usage
         return 1
     fi
@@ -51,7 +51,7 @@ bpcn() {
     # Submit to the bigpurple server
     cmd="sbatch --parsable --time=8:00:00 --nodes=1 --mem-per-cpu=$MEMORY --cpus-per-task=$CPUS --output=logs/server-%j.out --wrap='sleep infinity'"
     echo "Running request for $MEMORY and $CPUS CPUs"
-    job_id=$(ssh hpc $cmd)
+    job_id=$(ssh hpc "$cmd")
     echo "Job submitted with ID: $job_id"
 
     # Ensure the job was submitted successfully
@@ -83,13 +83,11 @@ bpcn() {
     #     User mm12865
     #     ProxyJump hpc
     #     StrictHostKeyChecking no
-    #     UserKnownHostsFile /dev/null
     # Overwrite the cnx host with the correct hostname
-    echo "Host cn
-        LogLevel QUIET
-        HostName $COMPUTE_NODE
-        User mm12865
-        ProxyJump hpc
-        StrictHostKeyChecking no
-        UserKnownHostsFile /dev/null" > ~/.ssh/configx
+    echo "Host cn" > ~/.ssh/configx
+    echo "    LogLevel QUIET" >> ~/.ssh/configx
+    echo "    HostName $COMPUTE_NODE" >> ~/.ssh/configx
+    echo "    User mm12865" >> ~/.ssh/configx
+    echo "    ProxyJump hpc" >> ~/.ssh/configx
+    echo "    StrictHostKeyChecking no" >> ~/.ssh/configx
 }
