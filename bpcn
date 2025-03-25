@@ -1,6 +1,8 @@
 bpcn() {
     DEFAULT_MEMORY="16GB"
     DEFAULT_CPUS=2
+    DEFAULT_TIME="8:00:00"
+    DEFAULT_PARTITION="cpu_short"
 
     # Function to print usage
     print_usage() {
@@ -22,6 +24,8 @@ bpcn() {
     # Initialize variables with default values
     MEMORY=$DEFAULT_MEMORY
     CPUS=$DEFAULT_CPUS
+    TIME=$DEFAULT_TIME
+    PARTITION=$DEFAULT_PARTITION
 
     # Parse options
     while getopts "m:c:h" opt; do
@@ -49,10 +53,11 @@ bpcn() {
     fi
 
     # Submit to the bigpurple server
-    cmd="sbatch --parsable --job-name=vscode --time=8:00:00 --nodes=1 --mem-per-cpu=$MEMORY --cpus-per-task=$CPUS --output=logs/server-%j.out --wrap='sleep infinity'"
+    cmd="sbatch --parsable --job-name=vscode --partition=$PARTITION --time=$TIME --nodes=1 --mem-per-cpu=$MEMORY --cpus-per-task=$CPUS --output=logs/server-%j.out --wrap='sleep infinity'"
     echo "Running request for $MEMORY and $CPUS CPUs"
     job_id=$(ssh hpc "$cmd")
     echo "Job submitted with ID: $job_id"
+    echo "Estimated Start Time: $eta"
 
     # Ensure the job was submitted successfully
     if [ -z "$job_id" ]; then
