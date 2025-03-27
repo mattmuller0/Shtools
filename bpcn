@@ -24,6 +24,11 @@ bpcn() {
         ssh hpc "squeue --me" 2>/dev/null | awk -v job_id="$1" '$1 == job_id {print $8}'
     }
 
+    # Function to get the status of the job
+    get_job_status() {
+        ssh hpc squeue --me 2>/dev/null | awk -v job_id="$1" '$1 == job_id {print $5}'
+    }
+
     # Function to get the estimated start time
     get_eta() {
         local job_id=$1
@@ -128,6 +133,13 @@ bpcn() {
         return 1
     fi
     echo "Job submitted with ID: $job_id"
+
+    # Ensure the job partition configuration is correct
+    local job_status=$(get_job_status "$job_id")
+    if [ "$job_status" = "PartitionConfig" ]; then
+        echo "Error: Partition configuration is not valid. Please see http://bigpurple-ws.nyumc.org/wiki/index.php/Job-Scheduler"
+        return 1
+    fi
     
     # Get estimated wait time
     local eta=$(get_eta "$job_id")
