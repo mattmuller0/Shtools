@@ -148,12 +148,19 @@ bpcn() {
     fi
     echo "Compute node allocated: $COMPUTE_NODE"
 
+    # Let's also get the remote user name
+    local REMOTE_USER=$(ssh hpc whoami 2>/dev/null)
+    if [ -z "$REMOTE_USER" ]; then
+        echo "Error: Could not determine remote user"
+        return 1
+    fi
+
     # Update SSH config file
     cat > ~/.ssh/configx << EOF
 Host cn
     LogLevel QUIET
     HostName $COMPUTE_NODE
-    User mm12865
+    User $REMOTE_USER
     ProxyJump hpc
     StrictHostKeyChecking no
 EOF
