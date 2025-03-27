@@ -41,7 +41,7 @@ bpcn() {
             start_time=$(ssh hpc "squeue -j $job_id --format=%S" 2>/dev/null | tail -n1)
             
             if [ -z "$start_time" ] || [ "$start_time" = "N/A" ]; then
-                echo "Waiting for valid start time..." >&2
+                echo "Waiting for valid start time... ($((attempt + 1))/$max_attempts)" >&2
                 sleep 3
                 attempt=$((attempt + 1))
             fi
@@ -138,7 +138,6 @@ bpcn() {
     echo "Estimated wait time: $eta seconds ($((eta / 60)) minutes)"
 
     # Wait for the job to start
-    echo "Waiting for compute node allocation..."
     sleep $eta
     
     # Get the compute node and update SSH config
@@ -150,7 +149,6 @@ bpcn() {
     echo "Compute node allocated: $COMPUTE_NODE"
 
     # Update SSH config file
-    mkdir -p ~/.ssh
     cat > ~/.ssh/configx << EOF
 Host cn
     LogLevel QUIET
