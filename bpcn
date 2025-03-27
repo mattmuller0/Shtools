@@ -6,19 +6,61 @@ bpcn() {
 
     # Function to print usage
     print_usage() {
-        echo "Usage: $0 [-m MEMORY] [-c CPUS]"
+        echo "Usage: $0 [-m MEMORY] [-c CPUS] [-t TIME] [-p PARTITION]"
         echo "  MEMORY: Amount of memory per CPU to request (default: $DEFAULT_MEMORY)"
         echo "  CPUS: Number of CPUs to request (default: $DEFAULT_CPUS)"
-    }
-
-    # Function to get the status of the job
-    get_job_status() {
-        ssh hpc squeue --me | awk -v job_id="$job_id" '$1 == job_id {print $5}'
+        echo "  TIME: Time limit for the job (default: $DEFAULT_TIME)"
+        echo "  PARTITION: Partition to submit the job to (default: $DEFAULT_PARTITION)"
     }
 
     # Function to get the compute node
     get_compute_node() {
         ssh hpc squeue --me | awk -v job_id="$job_id" '$1 == job_id {print $8}'
+    }
+
+    # Function to get the estimated start time
+    get_eta() {
+        # Get the estimated start time for the job
+        start_time=$(ssh hpc squeue -j "$job_id" --format="%S" | tail -n1)
+        
+        # Try to get a valid start time, retrying if it's empty or "N/A"
+        max_attempts=10
+        attempt=0
+        while [ -z "$start_time" ] || [ "$start_time" = "N/A" ]; do
+            if [ $attempt -ge $max_attempts ]; then
+            echo "Error: Failed to get valid start time after $max_attempts attempts" >&2
+            return 1
+            fi
+            echo "Waiting for valid start time..." >&2
+            sleep 3
+            start_time=$(ssh hpc squeue -j "$job_id" --format="%S" | tail -n1)
+            attempt=$((attempt + 1))
+        done
+        
+        # Try to convert start time to seconds with OS detection
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            # macOS (BSD date)
+            start_time_seconds=$(date -j -f "%Y-%m-%dT%H:%M:%S" "$start_time" +%s 2>/dev/null)
+        else
+            # Linux (GNU date)
+            start_time_seconds=$(date -d "$start_time" +%s 2>/dev/null)
+        fi
+        
+        # Check if conversion was successful
+        if [ -z "$start_time_seconds" ]; then
+            echo "Error: Could not parse start time"
+            return 1
+        fi
+
+        # If the start time is in the past, set it to the current time
+        current_time=$(date +%s)
+        if [ $start_time_seconds -lt $current_time ]; then
+            start_time_seconds=$current_time
+        fi
+        
+        # Calculate wait time
+        wait_seconds=$((start_time_seconds - current_time))
+        echo "$wait_seconds"
     }
 
     # Initialize variables with default values
@@ -28,10 +70,12 @@ bpcn() {
     PARTITION=$DEFAULT_PARTITION
 
     # Parse options
-    while getopts "m:c:h" opt; do
+    while getopts "m:c:t:p:h" opt; do
         case $opt in
             m) MEMORY="$OPTARG" ;;
             c) CPUS="$OPTARG" ;;
+            t) TIME="$OPTARG" ;;
+            p) PARTITION="$OPTARG" ;;
             h) print_usage
                return 0 ;;
             *) print_usage
@@ -52,26 +96,37 @@ bpcn() {
         return 1
     fi
 
+    if ! [[ $TIME =~ ^[0-9]+:[0-9]+:[0-9]+$ ]]; then
+        echo "Invalid time format. Must be in HH:MM:SS format."
+        print_usage
+        return 1
+    fi
+
+    if ! [[ "$PARTITION" =~ ^(cpu_short|cpu_medium|cpu_long|cpu_dev|gpu4_dev|gpu4_short|gpu4_medium|gpu4_long|a100_dev|a100_short|a100_long)$ ]]; then
+        echo "Invalid partition. Must be one of: cpu_short, cpu_medium, cpu_long, cpu_dev, gpu4_dev, gpu4_short, gpu4_medium, gpu4_long, a100_dev, a100_short, a100_long"
+        print_usage
+        return 1
+    fi
+
     # Submit to the bigpurple server
-    cmd="sbatch --parsable --job-name=vscode --partition=$PARTITION --time=$TIME --nodes=1 --mem-per-cpu=$MEMORY --cpus-per-task=$CPUS --output=logs/server-%j.out --wrap='sleep infinity'"
+    flags="--partition=$PARTITION --time=$TIME --mem-per-cpu=$MEMORY --cpus-per-task=$CPUS"
+    cmd="sbatch --parsable --job-name=vscode --nodes=1 $flags --output=logs/server-%j.out --wrap='sleep infinity'"
     echo "Running request for $MEMORY and $CPUS CPUs"
+    
     job_id=$(ssh hpc "$cmd")
     echo "Job submitted with ID: $job_id"
-    echo "Estimated Start Time: $eta"
+    
+    eta=$(get_eta)
+    echo "Estimated Start Time: $eta seconds ($((eta / 60)) minutes)"
 
-    # Ensure the job was submitted successfully
-    if [ -z "$job_id" ]; then
+    # Ensure the job was submitted successfully and the ETA is valid
+    if [ -z "$job_id" ] || [ -z "$eta" ]; then
         echo "Failed to submit job"
         return 1
     fi
 
-    # Wait for the compute node to be ready
-    STATUS=$(get_job_status)
-    while [[ "$STATUS" != "R" ]]; do
-        echo "Waiting for compute node..."
-        sleep 10
-        STATUS=$(get_job_status)
-    done
+    # Wait for the job to start using the start time
+    sleep $eta
     COMPUTE_NODE=$(get_compute_node)
     echo "Compute node: $COMPUTE_NODE"
 
