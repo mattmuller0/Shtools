@@ -102,4 +102,4 @@ Feel free to submit issues or pull requests with improvements or new features.
 
 ## License
 
-MIT (what even is a license?)
+MIT License
