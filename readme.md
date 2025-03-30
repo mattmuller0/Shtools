@@ -56,7 +56,7 @@ git clone https://github.com/mattmuller0/Shtools.git
 To connect to a BigPurple compute node with custom resource requirements, use the `bpcn` script:
 
 ```bash
-bpcn -m 8G -n 1 -t 4:00:00
+bpcn -m 8G -c 1 -t 4:00:00
 ```
 
 This command will request 8GB of memory, 1 CPU, and a time limit of 4 hours. You can adjust these parameters as needed.
