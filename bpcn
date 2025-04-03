@@ -29,6 +29,12 @@ bpcn() {
         ssh hpc squeue --me 2>/dev/null | awk -v job_id="$1" '$1 == job_id {print $5}'
     }
 
+    # Function to cancel the job
+    cancel_job() {
+        local job_id=$1
+        ssh hpc "scancel $job_id" 2>/dev/null
+    }
+
     # Function to get the estimated start time
     get_eta() {
         local job_id=$1
@@ -40,6 +46,7 @@ bpcn() {
         while [ -z "$start_time" ] || [ "$start_time" = "N/A" ]; do
             if [ $attempt -ge $max_attempts ]; then
                 echo "Error: Failed to get valid start time after $max_attempts attempts" >&2
+                cancel_job "$job_id"
                 return 1
             fi
             
@@ -47,7 +54,7 @@ bpcn() {
             
             if [ -z "$start_time" ] || [ "$start_time" = "N/A" ]; then
                 echo "Waiting for valid start time... ($((attempt + 1))/$max_attempts)" >&2
-                sleep 3
+                sleep 6
                 attempt=$((attempt + 1))
             fi
         done
@@ -138,6 +145,7 @@ bpcn() {
     local job_status=$(get_job_status "$job_id")
     if [ "$job_status" = "PartitionConfig" ]; then
         echo "Error: Partition configuration is not valid. Please see http://bigpurple-ws.nyumc.org/wiki/index.php/Job-Scheduler"
+        cancel_job "$job_id"
         return 1
     fi
     
