@@ -9,6 +9,7 @@ This repository contains a collection of shell scripts and utility functions for
 - `bpcn` - Connect to BigPurple compute nodes with custom resource requirements
 - `bpdownload` - Download data from BigPurple to local machine
 - `bpupload` - Upload data from local machine to BigPurple
+- `bpinfo` - Get information about the BigPurple cluster job queue
 
 ### Template Scripts Directory
 
