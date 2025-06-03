@@ -1,0 +1,10 @@
+bpinfo() {
+    # Get information about the BigPurple cluster job queue
+    echo "Fetching job queue information from BigPurple..."
+    echo "-- Job Queue Information --"
+    ssh hpc squeue --me --format="%.8i %.12P %.20j %.8u %.2t %.10M %.4D %R" --sort=-S
+    
+    # Get information about the nodes
+    echo "-- Node Information --"
+    ssh hpc sinfo
+}
