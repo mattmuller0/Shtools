@@ -1,10 +1,25 @@
 bpinfo() {
     # Get information about the BigPurple cluster job queue
     echo "Fetching job queue information from BigPurple..."
-    echo "-- Job Queue Information --"
-    ssh hpc squeue --me --format="%.8i %.12P %.20j %.8u %.2t %.10M %.4D %R" --sort=-S
     
+    # Check if SSH connection is successful
+    if ! ssh -q hpc exit; then
+        echo "Error: Unable to connect to BigPurple cluster. Please check your SSH configuration." >&2
+        return 1
+    fi
+
     # Get information about the nodes
-    echo "-- Node Information --"
+    echo "========================================"
+    echo "            Node Information            "
+    echo "========================================"
     ssh hpc sinfo
+    echo ""
+    
+    # Get information about the job queue
+    echo "========================================"
+    echo "         Job Queue Information          "
+    echo "========================================"
+    ssh hpc squeue --me
+    echo "========================================"
+    echo ""
 }
