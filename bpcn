@@ -157,8 +157,18 @@ bpcn() {
     fi
     echo "Estimated wait time: $eta seconds ($((eta / 60)) minutes)"
 
-    # Wait for the job to start
-    sleep $eta
+    # Wait for the job to start with periodic updates
+    while [ "$eta" -gt 0 ]; do
+        local wait_time=$((eta < 60 ? eta : 60))
+        echo "Waiting for job to start... (Updated ETA: $eta seconds ($((eta / 60)) minutes))"
+        sleep "$wait_time"
+        eta=$(get_eta "$job_id")
+        if [ $? -ne 0 ] || [ -z "$eta" ]; then
+            echo "Error: Could not determine updated start time or job was canceled"
+            cancel_job "$job_id"
+            return 1
+        fi
+    done
     
     # Get the compute node and update SSH config
     local COMPUTE_NODE=$(get_compute_node "$job_id")
