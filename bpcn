@@ -188,11 +188,13 @@ bpcn() {
     # Update SSH config file
     cat > ~/.ssh/configx << EOF
 Host cn
-    LogLevel QUIET
     HostName $COMPUTE_NODE
     User $REMOTE_USER
     ProxyJump hpc
-    StrictHostKeyChecking no
+    LogLevel QUIET
+    StrictHostKeyChecking accept-new
+    ServerAliveInterval 60
+    ServerAliveCountMax 5
 EOF
 
     echo "SSH configuration updated. You can now connect using 'ssh cn'"
