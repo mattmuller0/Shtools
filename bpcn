@@ -39,7 +39,7 @@ bpcn() {
     get_eta() {
         local job_id=$1
         local start_time=""
-        local max_attempts=20
+        local max_attempts=100
         local attempt=0
         
         # Get the estimated start time, retry if necessary
