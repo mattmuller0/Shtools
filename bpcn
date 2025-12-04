@@ -1,9 +1,9 @@
 bpcn() {
     # Default values
     local DEFAULT_MEMORY="16GB"
-    local DEFAULT_CPUS=2
+    local DEFAULT_CPUS=4
     local DEFAULT_TIME="8:00:00"
-    local DEFAULT_PARTITION="cpu_short"
+    local DEFAULT_PARTITION="cpu_medium"
     local MEMORY=$DEFAULT_MEMORY
     local CPUS=$DEFAULT_CPUS
     local TIME=$DEFAULT_TIME
