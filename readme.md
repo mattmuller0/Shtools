@@ -1,105 +1,136 @@
 # Shtools - Shell Tools for BigPurple HPC
 
-This repository contains a collection of shell scripts and utility functions for working with the SLURM BigPurple High-Performance Computing (HPC) environment at NYU Langone Health.
+A collection of shell scripts and utilities for working with the SLURM BigPurple High-Performance Computing (HPC) environment at NYU Langone Health.
 
 ## Repository Organization
 
-### Root Scripts
+```
+Shtools/
+├── bin/                    # CLI tools (add to PATH)
+│   ├── bpcn               # Request and connect to compute nodes
+│   ├── bpdownload         # Download data from BigPurple
+│   ├── bpupload           # Upload data to BigPurple
+│   └── bpinfo             # Show cluster and job queue status
+└── scripts/               # Templates to copy and customize
+    ├── bioinformatics/    # SLURM array jobs and Perl utilities
+    ├── general/           # Utility scripts
+    └── parallel/          # Spark on SLURM setup
+```
 
-- `bpcn` - Connect to BigPurple compute nodes with custom resource requirements
-- `bpdownload` - Download data from BigPurple to local machine
-- `bpupload` - Upload data from local machine to BigPurple
-- `bpinfo` - Get information about the BigPurple cluster job queue
+### CLI Tools (`bin/`)
 
-### Template Scripts Directory
+Standalone executables for interacting with BigPurple from your local machine:
 
-#### Bioinformatics Scripts
+| Tool | Description |
+|------|-------------|
+| `bpcn` | Request a compute node and configure SSH ProxyJump for easy access via `ssh cn` |
+| `bpdownload` | rsync wrapper to download files from BigPurple |
+| `bpupload` | rsync wrapper to upload files to BigPurple |
+| `bpinfo` | Display cluster node info and your job queue |
 
-Located in `bioinformatics`:
+### Template Scripts (`scripts/`)
 
-- `fastp.sh` - SLURM job for FASTQ quality control with fastp
+**Copy and customize** for each project - don't run directly from repo:
+
+#### Bioinformatics (`scripts/bioinformatics/`)
+
+- `fastp.sh` - SLURM array job for FASTQ quality control
+- `kallisto.sh` - SLURM array job for RNA-seq quantification
+- `samtools.sh` - SLURM array job for samtools depth calculations
+- `multiqc.sh` - Run MultiQC for quality control reports
 - `fastq_functions.sh` - Functions for FASTQ file handling
 - `featureCounts_functions.sh` - Process featureCounts output files
-- `gather_fastqs.sh` - Perl script to collect and organize FASTQ files
-- `get_references` - Generate reference genome settings
-- `kallisto.sh` - SLURM job for RNA-seq quantification with Kallisto
-- `multiqc.sh` - Run MultiQC for quality control report generation
-- `samtools.sh` - SLURM job for samtools depth calculations
+- `gather_fastqs.pl` - Perl script to collect and organize FASTQ files
+- `get_references.pl` - Perl script to generate reference genome settings
 
-#### General Utility Scripts
+#### General (`scripts/general/`)
 
-Located in `general`:
+- `download_urls.sh` - Download files from a list of URLs
+- `join-many.sh` - Join multiple tab/comma-separated files
 
-- `download_urls.sh` - Functions to download files from URLs
-- `general_functions.sh` - Common utility shell functions
-- `generate_scripts.sh` - Generate SLURM job scripts for R and Python
-- `join-many.sh` - Join multiple tab or comma-separated files
+#### Parallel (`scripts/parallel/`)
 
-#### Parallel Computing Scripts
-
-Located in `parallel`:
-
-- `spark_jupyter.sh` - SLURM job script for setting up Jupyter with Spark
-- `spark.sh` - Configure Spark cluster on SLURM
+- `spark.sh` - Configure Spark cluster on SLURM (source, don't execute)
+- `spark_jupyter.sh` - SLURM job for Jupyter with Spark
 
 ## Installation
-
-Clone this repository to your local machine:
 
 ```bash
 git clone https://github.com/mattmuller0/Shtools.git
 ```
 
-## Usage
-
-### Connecting to BigPurple
-
-To connect to a BigPurple compute node with custom resource requirements, use the `bpcn` script:
+Add the `bin/` directory to your PATH in `~/.zshrc`:
 
 ```bash
-bpcn -m 8G -n 1 -t 4:00:00
+export PATH="$HOME/src/Shtools/bin:$PATH"
 ```
 
-This command will request 8GB of memory, 1 CPU, and a time limit of 4 hours. You can adjust these parameters as needed.
+### SSH Configuration
 
-### BPCN Script Setup
+The tools require an `hpc` host alias in your SSH config. Add to `~/.ssh/config`:
 
-In order to use the bpcn script, you need to edit your .zshrc file to see the bpcn alias or autoload the script. You can do this by adding the following lines to your .zshrc file:
-
-```bash
-fpath=(/path/to/Shtools $fpath)
-autoload -Uz bpcn
 ```
-
-or by setting up an alias in your .zshrc file:
-
-```bash
-alias bpcn='/path/to/Shtools/bpcn'
-```
-
-It is currently set to look for the **hpc** host in your ssh config file. Once that is done, you need to add an include header for `~/.ssh/configx` to your `~/.ssh/config` file. Here is an example of what your config file might look like:
-
-```bash
-include ~/.ssh/configx
-
-Host *
-    ForwardAgent yes
-    AddKeysToAgent yes
-
 Host hpc
     HostName bigpurple.hpc.nyumc.org
     User your_username
     IdentityFile ~/.ssh/your_key
 ```
 
+The `bpcn` script will automatically:
+- Create `~/.ssh/config.d/` directory if needed
+- Add `Include ~/.ssh/config.d/*` to your SSH config
+- Write compute node config to `~/.ssh/config.d/bpcn`
+
+To use a different SSH host alias:
+
+```bash
+export BPCN_SSH_HOST=my_hpc_alias
+```
+
+## Usage
+
+### Connecting to a Compute Node
+
+```bash
+# Request a compute node (8GB/CPU, 4 CPUs = 32GB total, 4 hour limit)
+bpcn -m 8GB -c 4 -t 4:00:00
+
+# Dry run - show what would be submitted
+bpcn -n -m 8GB -c 4
+
+# Cancel your current compute node job
+bpcn -k
+
+# Show help
+bpcn -h
+```
+
+After the job starts, connect with:
+
+```bash
+ssh cn
+```
+
+### File Transfer
+
+```bash
+# Download from BigPurple
+bpdownload -r /gpfs/data/yourlab/project -l ./local_dir
+
+# Upload to BigPurple
+bpupload -l ./local_dir -r /gpfs/data/yourlab/project
+```
+
+### Cluster Status
+
+```bash
+bpinfo
+```
+
 ## Requirements
 
-- SSH access to BigPurple HPC environment
-- SSH key configured for secure access with hostname **hpc**
-
-## Contributing
-
-Feel free to submit issues or pull requests with improvements or new features.
+- SSH access to BigPurple HPC with `hpc` host alias configured
+- macOS or Linux
 
 ## License
 

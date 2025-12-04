@@ -1,0 +1,55 @@
+#!/bin/bash
+# =============================================================================
+# bpinfo - BigPurple Cluster Information
+# =============================================================================
+# Display cluster node and job queue information from BigPurple HPC.
+#
+# Usage: bpinfo [-h]
+#
+# Author: Matt Muller
+# =============================================================================
+
+set -e
+
+# Help message
+show_help() {
+    echo "Usage: bpinfo [-h]"
+    echo "Display BigPurple cluster node and job queue information."
+    echo ""
+    echo "Options:"
+    echo "  -h    Show this help message"
+}
+
+# Parse options
+while getopts "h" opt; do
+    case $opt in
+        h) show_help
+           exit 0 ;;
+        *) show_help
+           exit 1 ;;
+    esac
+done
+
+# Get information about the BigPurple cluster job queue
+echo "Fetching job queue information from BigPurple..."
+
+# Check if SSH connection is successful
+if ! ssh -q hpc exit; then
+    echo "Error: Unable to connect to BigPurple cluster. Please check your SSH configuration." >&2
+    exit 1
+fi
+
+# Get information about the nodes
+echo "========================================"
+echo "            Node Information            "
+echo "========================================"
+ssh hpc sinfo
+echo ""
+
+# Get information about the job queue
+echo "========================================"
+echo "         Job Queue Information          "
+echo "========================================"
+ssh hpc squeue --me
+echo "========================================"
+echo ""

@@ -1,0 +1,60 @@
+#!/bin/bash
+# =============================================================================
+# bpdownload - Download Data from BigPurple
+# =============================================================================
+# Download files from BigPurple HPC to local machine using rsync.
+#
+# Usage: bpdownload -r <remote_project_dir> -l <local_data_dir>
+#
+# Environment:
+#   REMOTE_HOST - SSH host alias for HPC (default: hpc)
+#
+# Author: Matt Muller
+# =============================================================================
+
+set -e
+
+# Initialize variables
+remote_project_dir=""
+local_data_dir=""
+remote_host="${REMOTE_HOST:-hpc}"
+
+# Function to display help
+show_help() {
+    echo "Usage: bpdownload -r <remote_project_dir> -l <local_data_dir>"
+    echo "Options:"
+    echo "  -r <remote_project_dir>  Specify the remote project directory"
+    echo "  -l <local_data_dir>      Specify the local data directory"
+    echo "  -h                       Show this help message"
+    echo ""
+    echo "Environment variables:"
+    echo "  REMOTE_HOST  SSH host alias (default: hpc)"
+}
+
+# Parse options
+while getopts "r:l:h" opt; do
+    case $opt in
+        r) remote_project_dir="$OPTARG" ;;
+        l) local_data_dir="$OPTARG" ;;
+        h) show_help
+           exit 0 ;;
+        *) show_help
+           exit 1 ;;
+    esac
+done
+
+# Check if required arguments are provided
+if [[ -z "$remote_project_dir" ]] || [[ -z "$local_data_dir" ]]; then
+    show_help
+    exit 1
+fi
+
+# Use rsync to download the data folder
+rsync -avz --progress "$remote_host:$remote_project_dir" "$local_data_dir"
+rsync_exit_code=$?
+if [[ $rsync_exit_code -eq 0 ]]; then
+    echo "Data folder downloaded successfully."
+else
+    echo "Error: Failed to download data folder. rsync exit code: $rsync_exit_code"
+    exit $rsync_exit_code
+fi
