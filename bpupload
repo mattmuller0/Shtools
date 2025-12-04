@@ -3,8 +3,7 @@ bpupload() {
     # Initialize variables
     local local_data_dir=""
     local remote_project_dir=""
-    local remote_user="${REMOTE_USER:-mm12865}"
-    local remote_host="${REMOTE_HOST:-bigpurple.nyumc.org}"
+    local remote_host="${REMOTE_HOST:-hpc}"
 
     # Usage message
     usage() {
@@ -14,9 +13,7 @@ bpupload() {
         echo "  -r    Remote project directory"
         echo "  -h    Show this help message"
     }
-    
 
-    # Parse options
     # Parse options
     while getopts "l:r:h" opt; do
         case $opt in
@@ -30,23 +27,22 @@ bpupload() {
     done
 
     # Check if required arguments are provided
-    if [ -z "$local_data_dir" ] || [ -z "$remote_project_dir" ]; then
-        echo "Error: Both local data directory and remote project directory are required."
-        show_help
+    if [[ -z "$local_data_dir" ]] || [[ -z "$remote_project_dir" ]]; then
+        echo "Error: Both local data directory and remote project directory are required." >&2
+        usage
         return 1
     fi
 
-
     # Validate local data directory
-    if [ ! -d "$local_data_dir" ]; then
-        echo "Error: Local data directory '$local_data_dir' does not exist."
+    if [[ ! -d "$local_data_dir" ]]; then
+        echo "Error: Local data directory '$local_data_dir' does not exist." >&2
         return 1
     fi
 
     # Use rsync to upload the data folder
-    rsync -avz --progress "$local_data_dir" "$remote_user@$remote_host:$remote_project_dir"
+    rsync -avz --progress "$local_data_dir" "$remote_host:$remote_project_dir"
     local rsync_exit_code=$?
-    if [ $rsync_exit_code -eq 0 ]; then
+    if [[ $rsync_exit_code -eq 0 ]]; then
         echo "Data folder uploaded successfully."
     else
         echo "Error: Failed to upload data folder. rsync exit code: $rsync_exit_code"

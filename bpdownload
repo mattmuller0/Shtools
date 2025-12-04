@@ -3,8 +3,7 @@ bpdownload() {
     # Initialize variables
     local remote_project_dir=""
     local local_data_dir=""
-    local remote_user="${REMOTE_USER:-mm12865}"
-    local remote_host="${REMOTE_HOST:-bigpurple.nyumc.org}"
+    local remote_host="${REMOTE_HOST:-hpc}"
 
     # Function to display help
     show_help() {
@@ -28,15 +27,15 @@ bpdownload() {
     done
 
     # Check if required arguments are provided
-    if [ -z "$remote_project_dir" ] || [ -z "$local_data_dir" ]; then
+    if [[ -z "$remote_project_dir" ]] || [[ -z "$local_data_dir" ]]; then
         show_help
         return 1
     fi
 
     # Use rsync to download the data folder
-    rsync -avz --progress "$remote_user@$remote_host:$remote_project_dir" "$local_data_dir"
+    rsync -avz --progress "$remote_host:$remote_project_dir" "$local_data_dir"
     local rsync_exit_code=$?
-    if [ $rsync_exit_code -eq 0 ]; then
+    if [[ $rsync_exit_code -eq 0 ]]; then
         echo "Data folder downloaded successfully."
     else
         echo "Error: Failed to download data folder. rsync exit code: $rsync_exit_code"

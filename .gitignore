@@ -1,0 +1,11 @@
+# Logs
+logs/
+*.log
+*.err
+
+# OS files
+.DS_Store
+
+# Editor files
+.vscode/
+.github/
