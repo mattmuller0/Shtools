@@ -1,0 +1,360 @@
+#!/bin/bash
+# =============================================================================
+# bpcn - HPC Compute Node
+# =============================================================================
+# Request and connect to a compute node on NYU Langone's BigPurple HPC cluster.
+# Submits a SLURM job and configures SSH for easy access via 'ssh cn'.
+#
+# Usage: bpcn [-m MEMORY] [-c CPUS] [-t TIME] [-p PARTITION] [-k] [-n] [-v] [-h]
+#
+# Environment:
+#   BPCN_SSH_HOST - SSH host alias for HPC (default: hpc)
+#
+# Author: Matt Muller
+# =============================================================================
+
+set -euo pipefail
+
+# =============================================================================
+# Configuration
+# =============================================================================
+
+BPCN_DEFAULT_MEMORY="16GB"
+BPCN_DEFAULT_CPUS=4
+BPCN_DEFAULT_TIME="8:00:00"
+BPCN_DEFAULT_PARTITION="cpu_medium"
+BPCN_VALID_PARTITIONS="cpu_short|cpu_medium|cpu_long|cpu_dev|gpu4_dev|gpu4_short|gpu4_medium|gpu4_long|a100_dev|a100_short|a100_long"
+BPCN_SSH_CONFIG_DIR="$HOME/.ssh/config.d"
+BPCN_SSH_CONFIG="$HOME/.ssh/config"
+BPCN_SSH_BPCN_CONFIG="$BPCN_SSH_CONFIG_DIR/bpcn"
+
+# =============================================================================
+# Helper Functions
+# =============================================================================
+
+print_usage() {
+    cat << EOF
+Usage: bpcn [-m MEMORY] [-c CPUS] [-t TIME] [-p PARTITION] [-k] [-n] [-v]
+  -m MEMORY    Amount of memory per CPU to request (default: $BPCN_DEFAULT_MEMORY)
+  -c CPUS      Number of CPUs to request (default: $BPCN_DEFAULT_CPUS)
+  -t TIME      Time limit for the job (default: $BPCN_DEFAULT_TIME)
+  -p PARTITION Partition to submit the job to (default: $BPCN_DEFAULT_PARTITION)
+  -k           Kill/cancel the current compute node job
+  -n           Dry run (show what would be submitted without submitting)
+  -v           Verbose mode (debug output)
+  -h           Display this help message
+
+Environment variables:
+  BPCN_SSH_HOST  SSH host alias (default: hpc)
+EOF
+}
+
+fail() {
+    echo "Error: $1" >&2
+    trap - INT TERM
+    exit 1
+}
+
+get_compute_node() {
+    local ssh_host="$1"
+    local job_id="$2"
+    ssh "$ssh_host" -- "squeue --me" 2>/dev/null | awk -v job_id="$job_id" '$1 == job_id {print $8}'
+}
+
+get_job_status() {
+    local ssh_host="$1"
+    local job_id="$2"
+    ssh "$ssh_host" -- squeue --me 2>/dev/null | awk -v job_id="$job_id" '$1 == job_id {print $5}'
+}
+
+cancel_job() {
+    local ssh_host="$1"
+    local job_id="$2"
+    ssh "$ssh_host" -- "scancel $job_id" 2>/dev/null
+}
+
+kill_cn_job() {
+    local ssh_host="$1"
+    local cn_host
+    cn_host=$(grep -A1 "^Host cn$" "$BPCN_SSH_BPCN_CONFIG" 2>/dev/null | grep HostName | awk '{print $2}')
+    if [[ -z "$cn_host" ]]; then
+        echo "Error: No compute node found in $BPCN_SSH_BPCN_CONFIG" >&2
+        exit 1
+    fi
+    local job_id
+    job_id=$(ssh "$ssh_host" -- "squeue --me" 2>/dev/null | awk -v node="$cn_host" '$8 == node {print $1}')
+    if [[ -z "$job_id" ]]; then
+        echo "Error: No running job found for compute node $cn_host" >&2
+        exit 1
+    fi
+    echo "Canceling job $job_id on $cn_host..."
+    cancel_job "$ssh_host" "$job_id"
+    echo "Job canceled."
+}
+
+get_eta() {
+    local ssh_host="$1"
+    local job_id="$2"
+    local verbose="$3"
+    local start_time=""
+    local max_attempts=100
+    local attempt=0
+    
+    # Get the estimated start time, retry if necessary
+    while [[ -z "$start_time" ]] || [[ "$start_time" == "N/A" ]]; do
+        if [[ $attempt -ge $max_attempts ]]; then
+            echo "Error: Failed to get valid start time after $max_attempts attempts" >&2
+            cancel_job "$ssh_host" "$job_id"
+            exit 1
+        fi
+        
+        start_time=$(ssh "$ssh_host" -- "squeue -j $job_id --format=%S" 2>/dev/null | tail -n1)
+        
+        if [[ -z "$start_time" ]] || [[ "$start_time" == "N/A" ]]; then
+            [[ "$verbose" == "true" ]] && echo "Waiting for valid start time... ($((attempt + 1))/$max_attempts)" >&2
+            sleep 6
+            attempt=$((attempt + 1))
+        fi
+    done
+    
+    # Convert start time to seconds with OS detection
+    local start_time_seconds
+    local current_time
+    current_time=$(date +%s)
+    
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        # macOS (BSD date)
+        start_time_seconds=$(date -j -f "%Y-%m-%dT%H:%M:%S" "$start_time" +%s 2>/dev/null)
+    else
+        # Linux (GNU date)
+        start_time_seconds=$(date -d "$start_time" +%s 2>/dev/null)
+    fi
+    
+    # Check if conversion was successful
+    if [[ -z "$start_time_seconds" ]]; then
+        echo "Error: Could not parse start time" >&2
+        exit 1
+    fi
+
+    # If the start time is in the past, set it to the current time
+    if [[ $start_time_seconds -lt $current_time ]]; then
+        start_time_seconds=$current_time
+    fi
+    
+    # Calculate and return wait time in seconds
+    echo $((start_time_seconds - current_time))
+}
+
+setup_ssh_config() {
+    local ssh_host="$1"
+    local compute_node="$2"
+    local remote_user="$3"
+    local verbose="$4"
+    
+    # Create config.d directory if it doesn't exist
+    if [[ ! -d "$BPCN_SSH_CONFIG_DIR" ]]; then
+        mkdir -p "$BPCN_SSH_CONFIG_DIR"
+        chmod 700 "$BPCN_SSH_CONFIG_DIR"
+        [[ "$verbose" == "true" ]] && echo "Created $BPCN_SSH_CONFIG_DIR"
+    fi
+    
+    # Ensure Include directive exists in ~/.ssh/config
+    if [[ -f "$BPCN_SSH_CONFIG" ]]; then
+        if ! grep -q "^Include.*config\.d/\*" "$BPCN_SSH_CONFIG" 2>/dev/null; then
+            [[ "$verbose" == "true" ]] && echo "Adding Include directive to $BPCN_SSH_CONFIG"
+            local tmp_config
+            tmp_config=$(mktemp)
+            echo "Include ~/.ssh/config.d/*" > "$tmp_config"
+            echo "" >> "$tmp_config"
+            cat "$BPCN_SSH_CONFIG" >> "$tmp_config"
+            mv "$tmp_config" "$BPCN_SSH_CONFIG"
+            chmod 600 "$BPCN_SSH_CONFIG"
+            echo "Added 'Include ~/.ssh/config.d/*' to $BPCN_SSH_CONFIG"
+        fi
+    else
+        echo "Include ~/.ssh/config.d/*" > "$BPCN_SSH_CONFIG"
+        echo "" >> "$BPCN_SSH_CONFIG"
+        chmod 600 "$BPCN_SSH_CONFIG"
+        echo "Created $BPCN_SSH_CONFIG with Include directive"
+    fi
+
+    # Write SSH config for compute node
+    cat > "$BPCN_SSH_BPCN_CONFIG" << EOF
+Host cn
+    HostName $compute_node
+    User $remote_user
+    ProxyJump $ssh_host
+    LogLevel QUIET
+    StrictHostKeyChecking accept-new
+    ServerAliveInterval 60
+    ServerAliveCountMax 5
+EOF
+    chmod 600 "$BPCN_SSH_BPCN_CONFIG"
+}
+
+# =============================================================================
+# Main
+# =============================================================================
+
+main() {
+    local ssh_host="${BPCN_SSH_HOST:-hpc}"
+    local memory="$BPCN_DEFAULT_MEMORY"
+    local cpus="$BPCN_DEFAULT_CPUS"
+    local time="$BPCN_DEFAULT_TIME"
+    local partition="$BPCN_DEFAULT_PARTITION"
+    local verbose="false"
+    local kill_mode="false"
+    local dry_run="false"
+    local job_id=""
+
+    # Cleanup function for interrupt handling
+    cleanup() {
+        if [[ -n "$job_id" ]]; then
+            echo -e "\nInterrupted. Canceling job $job_id..." >&2
+            cancel_job "$ssh_host" "$job_id"
+        fi
+    }
+
+    # -------------------------------------------------------------------------
+    # Parse Options
+    # -------------------------------------------------------------------------
+    while getopts "m:c:t:p:knvh" opt; do
+        case $opt in
+            m) memory="$OPTARG" ;;
+            c) cpus="$OPTARG" ;;
+            t) time="$OPTARG" ;;
+            p) partition="$OPTARG" ;;
+            k) kill_mode="true" ;;
+            n) dry_run="true" ;;
+            v) verbose="true" ;;
+            h) print_usage; exit 0 ;;
+            *) print_usage; exit 1 ;;
+        esac
+    done
+
+    # -------------------------------------------------------------------------
+    # Handle Kill Mode
+    # -------------------------------------------------------------------------
+    if [[ "$kill_mode" == "true" ]]; then
+        kill_cn_job "$ssh_host"
+        exit $?
+    fi
+
+    # -------------------------------------------------------------------------
+    # Validate Inputs
+    # -------------------------------------------------------------------------
+    if ! ssh -q "$ssh_host" -- exit 2>/dev/null; then
+        echo "Error: Cannot connect to $ssh_host. Check your SSH configuration." >&2
+        exit 1
+    fi
+    [[ "$verbose" == "true" ]] && echo "SSH connection to $ssh_host verified."
+
+    if ! [[ $memory =~ ^[0-9]+[MG]B$ ]]; then
+        echo "Error: Invalid memory format. Example: 32GB or 420MB" >&2
+        print_usage
+        exit 1
+    fi
+
+    if ! [[ $cpus =~ ^[0-9]+$ ]]; then
+        echo "Error: Invalid CPUs format. Must be an integer." >&2
+        print_usage
+        exit 1
+    fi
+
+    if ! [[ $time =~ ^[0-9]+:[0-9]+:[0-9]+$ ]]; then
+        echo "Error: Invalid time format. Must be in HH:MM:SS format." >&2
+        print_usage
+        exit 1
+    fi
+
+    if ! [[ "$partition" =~ ^($BPCN_VALID_PARTITIONS)$ ]]; then
+        echo "Error: Invalid partition. Must be one of: ${BPCN_VALID_PARTITIONS//|/, }" >&2
+        print_usage
+        exit 1
+    fi
+
+    # -------------------------------------------------------------------------
+    # Submit Job
+    # -------------------------------------------------------------------------
+    trap cleanup INT TERM
+
+    local flags="--partition=$partition --time=$time --mem-per-cpu=$memory --cpus-per-task=$cpus"
+    local cmd="sbatch --parsable --job-name=vscode --nodes=1 $flags --output=logs/server-%j.out --wrap='sleep infinity'"
+    
+    # Calculate total memory for display
+    local mem_value="${memory%[MG]B}"
+    local mem_unit="${memory##*[0-9]}"
+    local total_mem="$((mem_value * cpus))${mem_unit}"
+
+    echo "Requesting compute node with the following parameters:"
+    echo "  Memory per CPU: $memory"
+    echo "  CPUs: $cpus"
+    echo "  Total Memory: $total_mem"
+    echo "  Time: $time"
+    echo "  Partition: $partition"
+    
+    if [[ "$dry_run" == "true" ]]; then
+        echo ""
+        echo "[DRY RUN] Would execute on $ssh_host:"
+        echo "  $cmd"
+        exit 0
+    fi
+    
+    job_id=$(ssh "$ssh_host" -- "$cmd" 2>/dev/null)
+    if [[ -z "$job_id" ]]; then
+        fail "Failed to submit job"
+    fi
+    echo "Job submitted with ID: $job_id"
+
+    # -------------------------------------------------------------------------
+    # Wait for Job
+    # -------------------------------------------------------------------------
+    local job_status
+    job_status=$(get_job_status "$ssh_host" "$job_id")
+    if [[ "$job_status" == "PartitionConfig" ]]; then
+        cancel_job "$ssh_host" "$job_id"
+        fail "Partition configuration is not valid. See http://bigpurple-ws.nyumc.org/wiki/index.php/Job-Scheduler"
+    fi
+    
+    local eta
+    if ! eta=$(get_eta "$ssh_host" "$job_id" "$verbose") || [[ -z "$eta" ]]; then
+        fail "Could not determine start time"
+    fi
+    echo "Estimated wait time: $eta seconds ($((eta / 60)) minutes)"
+
+    while [[ "$eta" -gt 0 ]]; do
+        local wait_time=$((eta < 60 ? eta : 60))
+        echo "Waiting for job to start... (ETA: $eta seconds / $((eta / 60)) minutes)"
+        sleep "$wait_time"
+        if ! eta=$(get_eta "$ssh_host" "$job_id" "$verbose") || [[ -z "$eta" ]]; then
+            cancel_job "$ssh_host" "$job_id"
+            fail "Could not determine updated start time or job was canceled"
+        fi
+    done
+    
+    # -------------------------------------------------------------------------
+    # Configure SSH
+    # -------------------------------------------------------------------------
+    local compute_node
+    compute_node=$(get_compute_node "$ssh_host" "$job_id")
+    if [[ -z "$compute_node" ]]; then
+        fail "No compute node allocated"
+    fi
+    echo "Compute node allocated: $compute_node"
+
+    local remote_user
+    remote_user=$(ssh "$ssh_host" -- whoami 2>/dev/null)
+    if [[ -z "$remote_user" ]]; then
+        fail "Could not determine remote user"
+    fi
+
+    setup_ssh_config "$ssh_host" "$compute_node" "$remote_user" "$verbose"
+
+    # -------------------------------------------------------------------------
+    # Done
+    # -------------------------------------------------------------------------
+    trap - INT TERM
+    echo "SSH configuration updated. You can now connect using 'ssh cn'"
+}
+
+main "$@"
