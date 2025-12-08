@@ -58,7 +58,10 @@ fail() {
 get_compute_node() {
     local ssh_host="$1"
     local job_id="$2"
-    ssh "$ssh_host" -- "squeue --me" 2>/dev/null | awk -v job_id="$job_id" '$1 == job_id {print $8}'
+    # Use srun to get the short hostname from within the job
+    # This handles naming mismatches (e.g., cl40s-8006 in squeue vs gl40s-8006 as actual hostname)
+    # Note: Use short hostname (not -f) as it's resolvable within HPC network
+    ssh "$ssh_host" -- "srun --jobid=$job_id hostname" 2>/dev/null | tail -n1
 }
 
 get_job_status() {
@@ -150,14 +153,14 @@ setup_ssh_config() {
     local compute_node="$2"
     local remote_user="$3"
     local verbose="$4"
-    
+
     # Create config.d directory if it doesn't exist
     if [[ ! -d "$BPCN_SSH_CONFIG_DIR" ]]; then
         mkdir -p "$BPCN_SSH_CONFIG_DIR"
         chmod 700 "$BPCN_SSH_CONFIG_DIR"
         [[ "$verbose" == "true" ]] && echo "Created $BPCN_SSH_CONFIG_DIR"
     fi
-    
+
     # Ensure Include directive exists in ~/.ssh/config
     if [[ -f "$BPCN_SSH_CONFIG" ]]; then
         if ! grep -q "^Include.*config\.d/\*" "$BPCN_SSH_CONFIG" 2>/dev/null; then
@@ -186,8 +189,6 @@ Host cn
     ProxyJump $ssh_host
     LogLevel QUIET
     StrictHostKeyChecking accept-new
-    ServerAliveInterval 60
-    ServerAliveCountMax 5
 EOF
     chmod 600 "$BPCN_SSH_BPCN_CONFIG"
 }
@@ -279,7 +280,7 @@ main() {
     trap cleanup INT TERM
 
     local flags="--partition=$partition --time=$time --mem-per-cpu=$memory --cpus-per-task=$cpus"
-    local cmd="sbatch --parsable --job-name=vscode --nodes=1 $flags --output=logs/server-%j.out --wrap='sleep infinity'"
+    local cmd="sbatch --parsable --job-name=vscode --nodes=1 $flags --output=logs/server-%j.out --wrap='echo \"VS Code node reserved at \$(date). Job ID: \$SLURM_JOB_ID on \$(hostname)\"; exec tail -f /dev/null'"
     
     # Calculate total memory for display
     local mem_value="${memory%[MG]B}"

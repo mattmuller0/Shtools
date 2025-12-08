@@ -14,7 +14,7 @@ set -e  # Exit on error
 ##############################################
 # CONFIGURATION - Edit these for your project
 ##############################################
-PROJECT_PATH="/gpfs/data/bergerlab/Platelets_mouse_human_mix_May2023"
+PROJECT_PATH="path/to/your/project"
 INPUT_DIR="${PROJECT_PATH}/data/raw_data"
 OUTPUT_DIR="data/clean"
 SAMPLE_FILE="data/sample_names.txt"
