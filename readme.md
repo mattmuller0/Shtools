@@ -35,9 +35,6 @@ Standalone executables for interacting with BigPurple from your local machine:
 #### Bioinformatics (`scripts/bioinformatics/`)
 
 - `fastp.sh` - SLURM array job for FASTQ quality control
-- `kallisto.sh` - SLURM array job for RNA-seq quantification
-- `samtools.sh` - SLURM array job for samtools depth calculations
-- `multiqc.sh` - Run MultiQC for quality control reports
 - `fastq_functions.sh` - Functions for FASTQ file handling
 - `featureCounts_functions.sh` - Process featureCounts output files
 - `gather_fastqs.pl` - Perl script to collect and organize FASTQ files
