@@ -23,7 +23,7 @@ BPCN_DEFAULT_MEMORY="16GB"
 BPCN_DEFAULT_CPUS=4
 BPCN_DEFAULT_TIME="8:00:00"
 BPCN_DEFAULT_PARTITION="cpu_medium"
-BPCN_VALID_PARTITIONS="cpu_short|cpu_medium|cpu_long|cpu_dev|gpu4_dev|gpu4_short|gpu4_medium|gpu4_long|a100_dev|a100_short|a100_long"
+BPCN_VALID_PARTITIONS="cpu_short|cpu_medium|cpu_long|cpu_dev|gpu4_dev|gpu4_short|gpu4_medium|gpu4_long|gpu8_short|gpu8_medium|gpu8_long|a100_dev|a100_short|a100_long"
 BPCN_SSH_CONFIG_DIR="$HOME/.ssh/config.d"
 BPCN_SSH_CONFIG="$HOME/.ssh/config"
 BPCN_SSH_BPCN_CONFIG="$BPCN_SSH_CONFIG_DIR/bpcn"
@@ -59,8 +59,6 @@ get_compute_node() {
     local ssh_host="$1"
     local job_id="$2"
     # Use srun to get the short hostname from within the job
-    # This handles naming mismatches (e.g., cl40s-8006 in squeue vs gl40s-8006 as actual hostname)
-    # Note: Use short hostname (not -f) as it's resolvable within HPC network
     ssh "$ssh_host" -- "srun --jobid=$job_id hostname" 2>/dev/null | tail -n1
 }
 
@@ -100,7 +98,7 @@ get_eta() {
     local job_id="$2"
     local verbose="$3"
     local start_time=""
-    local max_attempts=100
+    local max_attempts=20
     local attempt=0
     
     # Get the estimated start time, retry if necessary
@@ -112,7 +110,6 @@ get_eta() {
         fi
         
         start_time=$(ssh "$ssh_host" -- "squeue -j $job_id --format=%S" 2>/dev/null | tail -n1)
-        
         if [[ -z "$start_time" ]] || [[ "$start_time" == "N/A" ]]; then
             [[ "$verbose" == "true" ]] && echo "Waiting for valid start time... ($((attempt + 1))/$max_attempts)" >&2
             sleep 6
@@ -187,10 +184,13 @@ Host cn
     HostName $compute_node
     User $remote_user
     ProxyJump $ssh_host
+    ForwardAgent yes
     LogLevel QUIET
     StrictHostKeyChecking accept-new
 EOF
+
     chmod 600 "$BPCN_SSH_BPCN_CONFIG"
+    [[ "$verbose" == "true" ]] && echo "Wrote SSH config for compute node to $BPCN_SSH_BPCN_CONFIG"
 }
 
 # =============================================================================
@@ -280,7 +280,7 @@ main() {
     trap cleanup INT TERM
 
     local flags="--partition=$partition --time=$time --mem-per-cpu=$memory --cpus-per-task=$cpus"
-    local cmd="sbatch --parsable --job-name=vscode --nodes=1 $flags --output=logs/server-%j.out --wrap='echo \"VS Code node reserved at \$(date). Job ID: \$SLURM_JOB_ID on \$(hostname)\"; exec tail -f /dev/null'"
+    local cmd="sbatch --parsable --job-name=vscode --nodes=1 $flags --output=logs/server-%j.out --wrap='echo \"Reserved at \$(date). Job ID: \$SLURM_JOB_ID on \$(hostname)\"; exec tail -f /dev/null'"
     
     # Calculate total memory for display
     local mem_value="${memory%[MG]B}"
