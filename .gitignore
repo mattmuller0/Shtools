@@ -9,3 +9,6 @@ logs/
 # Editor files
 .vscode/
 .github/
+
+# OS files
+.DS_Store
