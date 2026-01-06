@@ -187,6 +187,8 @@ Host cn
     ForwardAgent yes
     LogLevel QUIET
     StrictHostKeyChecking no
+    ControlMaster auto
+    ControlPersist 10m
 EOF
 
     chmod 600 "$BPCN_SSH_BPCN_CONFIG"
