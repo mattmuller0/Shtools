@@ -188,6 +188,7 @@ Host cn
     LogLevel QUIET
     StrictHostKeyChecking no
     ControlMaster auto
+    ControlPath ~/.ssh/sockets/%r@%h:%p
     ControlPersist 10m
 EOF
 
