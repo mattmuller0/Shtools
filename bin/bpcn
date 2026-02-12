@@ -5,7 +5,7 @@
 # Request and connect to a compute node on NYU Langone's BigPurple HPC cluster.
 # Submits a SLURM job and configures SSH for easy access via 'ssh cn'.
 #
-# Usage: bpcn [-m MEMORY] [-c CPUS] [-t TIME] [-p PARTITION] [-k] [-n] [-v] [-h]
+# Usage: bpcn [-m MEMORY] [-c CPUS] [-t TIME] [-p PARTITION] [-w NODELIST] [-k] [-n] [-v] [-h]
 #
 # Environment:
 #   BPCN_SSH_HOST - SSH host alias for HPC (default: hpc)
@@ -23,7 +23,8 @@ BPCN_DEFAULT_MEMORY="16GB"
 BPCN_DEFAULT_CPUS=4
 BPCN_DEFAULT_TIME="8:00:00"
 BPCN_DEFAULT_PARTITION="cpu_medium"
-BPCN_VALID_PARTITIONS="cpu_short|cpu_medium|cpu_long|cpu_dev|gpu4_dev|gpu4_short|gpu4_medium|gpu4_long|gpu8_short|gpu8_medium|gpu8_long|a100_dev|a100_short|a100_long"
+BPCN_DEFAULT_NODELIST=""
+BPCN_VALID_PARTITIONS="dev|cpu_dev|cpu_short|cpu_medium|cpu_long|fn_short|fn_medium|fn_long|gpu4_dev|gpu4_short|gpu4_medium|gpu4_long|gpu8_short|gpu8_medium|gpu8_long|a100_dev|a100_short|a100_long|data_mover|gl40s_dev|gl40s_short|gl40s_long"
 BPCN_SSH_CONFIG_DIR="$HOME/.ssh/config.d"
 BPCN_SSH_CONFIG="$HOME/.ssh/config"
 BPCN_SSH_BPCN_CONFIG="$BPCN_SSH_CONFIG_DIR/bpcn"
@@ -34,11 +35,12 @@ BPCN_SSH_BPCN_CONFIG="$BPCN_SSH_CONFIG_DIR/bpcn"
 
 print_usage() {
     cat << EOF
-Usage: bpcn [-m MEMORY] [-c CPUS] [-t TIME] [-p PARTITION] [-k] [-n] [-v]
+Usage: bpcn [-m MEMORY] [-c CPUS] [-t TIME] [-p PARTITION] [-w NODELIST] [-k] [-n] [-v]
   -m MEMORY    Amount of memory per CPU to request (default: $BPCN_DEFAULT_MEMORY)
   -c CPUS      Number of CPUs to request (default: $BPCN_DEFAULT_CPUS)
   -t TIME      Time limit for the job (default: $BPCN_DEFAULT_TIME)
   -p PARTITION Partition to submit the job to (default: $BPCN_DEFAULT_PARTITION)
+  -w NODELIST  Specific node(s) to target (e.g., gn-0003 or gn-[0013-0015])
   -k           Kill/cancel the current compute node job
   -n           Dry run (show what would be submitted without submitting)
   -v           Verbose mode (debug output)
@@ -186,7 +188,7 @@ Host cn
     ProxyJump $ssh_host
     ForwardAgent yes
     LogLevel QUIET
-    StrictHostKeyChecking no
+    StrictHostKeyChecking accept-new
     ControlMaster auto
     ControlPath ~/.ssh/sockets/%r@%h:%p
     ControlPersist 10m
@@ -206,6 +208,7 @@ main() {
     local cpus="$BPCN_DEFAULT_CPUS"
     local time="$BPCN_DEFAULT_TIME"
     local partition="$BPCN_DEFAULT_PARTITION"
+    local nodelist="$BPCN_DEFAULT_NODELIST"
     local verbose="false"
     local kill_mode="false"
     local dry_run="false"
@@ -222,12 +225,13 @@ main() {
     # -------------------------------------------------------------------------
     # Parse Options
     # -------------------------------------------------------------------------
-    while getopts "m:c:t:p:knvh" opt; do
+    while getopts "m:c:t:p:w:knvh" opt; do
         case $opt in
             m) memory="$OPTARG" ;;
             c) cpus="$OPTARG" ;;
             t) time="$OPTARG" ;;
             p) partition="$OPTARG" ;;
+            w) nodelist="$OPTARG" ;;
             k) kill_mode="true" ;;
             n) dry_run="true" ;;
             v) verbose="true" ;;
@@ -283,6 +287,9 @@ main() {
     trap cleanup INT TERM
 
     local flags="--partition=$partition --time=$time --mem-per-cpu=$memory --cpus-per-task=$cpus"
+    if [[ -n "$nodelist" ]]; then
+        flags="$flags --nodelist=$nodelist"
+    fi
     local cmd="sbatch --parsable --job-name=vscode --nodes=1 $flags --output=logs/server-%j.out --wrap='echo \"Reserved at \$(date). Job ID: \$SLURM_JOB_ID on \$(hostname)\"; exec tail -f /dev/null'"
     
     # Calculate total memory for display
@@ -296,6 +303,7 @@ main() {
     echo "  Total Memory: $total_mem"
     echo "  Time: $time"
     echo "  Partition: $partition"
+    [[ -n "$nodelist" ]] && echo "  Nodelist: $nodelist"
     
     if [[ "$dry_run" == "true" ]]; then
         echo ""
