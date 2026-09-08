@@ -23,7 +23,7 @@ Standalone executables for interacting with BigPurple from your local machine:
 
 | Tool | Description |
 |------|-------------|
-| `bpcn` | Request a compute node and configure SSH ProxyJump for easy access via `ssh cn` |
+| `bpcn` | Request a compute node and configure SSH ProxyCommand for easy access via `ssh cn` |
 | `bpdownload` | rsync wrapper to download files from BigPurple |
 | `bpupload` | rsync wrapper to upload files to BigPurple |
 | `bpinfo` | Display cluster node info and your job queue |
